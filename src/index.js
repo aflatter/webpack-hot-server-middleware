@@ -36,12 +36,15 @@ function getFilename(serverStats, outputPath, chunkName) {
     );
 }
 
-function getServerRenderer(filename, buffer, options) {
+function getServerRendererModule(filename, buffer) {
+  return requireFromString(buffer.toString(), filename);
+}
+
+function getServerRenderer(serverRendererModule, options) {
     const errMessage = `The 'server' compiler must export a function in the form of \`(options) => (req, res, next) => void\``;
 
-    let serverRenderer = interopRequireDefault(
-        requireFromString(buffer.toString(), filename)
-    );
+    let serverRenderer = interopRequireDefault(serverRendererModule);
+
     if (typeof serverRenderer !== 'function') {
         throw new Error(errMessage);
     }
@@ -104,6 +107,7 @@ function webpackHotServerMiddleware(multiCompiler, options) {
     installSourceMapSupport(outputFs);
 
     let serverRenderer;
+    let serverRendererModule;
     let error = false;
 
     multiCompiler.plugin('done', multiStats => {
@@ -122,7 +126,12 @@ function webpackHotServerMiddleware(multiCompiler, options) {
             serverStats: serverStats.toJson()
         }, options.serverRendererOptions);
         try {
-            serverRenderer = getServerRenderer(filename, buffer, serverRendererOptions);
+          if (serverRendererModule && serverRendererModule.dispose) {
+            serverRendererModule.dispose();
+          }
+
+          serverRendererModule = getServerRendererModule(filename, buffer);
+          serverRenderer = getServerRenderer(serverRendererModule, serverRendererOptions);
         } catch (ex) {
             debug(ex);
             error = ex;
